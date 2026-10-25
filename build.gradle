@@ -151,3 +151,28 @@ publishing {
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }
+
+def verifyMixinRefmap = tasks.register('verifyMixinRefmap') {
+    dependsOn tasks.named('reobfJar')
+    inputs.file(tasks.named('jar', Jar).flatMap { it.archiveFile })
+    doLast {
+        def contents = zipTree(tasks.named('jar', Jar).get().archiveFile.get().asFile)
+        def config = new groovy.json.JsonSlurper().parse(contents.matching {
+            include 'cataclysm_dimension.mixins.json'
+        }.singleFile)
+        if (config.refmap != 'cataclysm_dimension.mixin-refmap.json') {
+            throw new GradleException('The production Mixin config must reference its generated refmap')
+        }
+        def refmap = new groovy.json.JsonSlurper().parse(contents.matching {
+            include config.refmap
+        }.singleFile)
+        def target = refmap.mappings['com/p1nero/cataclysm_dimension/mixin/ChunkAccessMixin']?.markPosForPostprocessing
+        if (!(target instanceof String) || !(target =~ /;m_\d+_\(/).find()) {
+            throw new GradleException('The packaged refmap must map ChunkAccessMixin to its production SRG method')
+        }
+    }
+}
+
+tasks.named('check').configure {
+    dependsOn verifyMixinRefmap
+}

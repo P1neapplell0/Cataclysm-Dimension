@@ -3,7 +3,13 @@
   "minVersion": "0.8",
   "package": "com.p1nero.cataclysm_dimension.mixin",
   "compatibilityLevel": "JAVA_17",
+  "refmap": "cataclysm_dimension.mixin-refmap.json",
   "mixins": [
+    "StructurePieceMixin",
+    "TemplatePieceMixin",
+    "StructurePlaceSettingsMixin",
+    "ChunkAccessMixin",
+    "LevelChunkMixin"
   ],
   "client": [
   ],
