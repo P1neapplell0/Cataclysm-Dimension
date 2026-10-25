@@ -94,12 +94,25 @@ sourceSets.main.resources { srcDir 'src/generated/resources' }
 
 
 dependencies {
+    implementation "io.github.llamalad7:mixinextras-neoforge:0.5.3"
+    jarJar("io.github.llamalad7:mixinextras-neoforge:0.5.3") {
+        version {
+            strictly '[0.5.3,)'
+            prefer '0.5.3'
+        }
+    }
+
     implementation "curse.maven:lendercataclysm-551586:6906997"
     implementation "curse.maven:lionfish-api-1001614:6168249"
     implementation "curse.maven:curios-309927:6529130"
+    implementation "curse.maven:c2me-533097:9131675"
 
     implementation "curse.maven:cupboard-326652:6078150"
     implementation "curse.maven:structure-essentials-forge-fabric-832882:6732857"
+
+    if (providers.gradleProperty('c2meCompatTest').map { it.toBoolean() }.getOrElse(false)) {
+        runtimeOnly "curse.maven:c2me-533097:9131675"
+    }
 }
 
 repositories {

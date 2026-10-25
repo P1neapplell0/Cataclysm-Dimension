@@ -10,7 +10,6 @@ import com.p1nero.cataclysm_dimension.worldgen.CataclysmDimensions;
 import com.p1nero.cataclysm_dimension.worldgen.placements.CDPlacementTypes;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.SectionPos;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
@@ -22,9 +21,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
-import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.Mob;
 import net.minecraft.server.packs.PackType;
 import net.minecraft.server.packs.repository.Pack;
 import net.minecraft.server.packs.repository.PackSource;
@@ -35,20 +32,10 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.StructureManager;
-import net.minecraft.world.level.chunk.ChunkGenerator;
-import net.minecraft.world.level.dimension.DimensionType;
 import net.minecraft.world.level.levelgen.Heightmap;
-import net.minecraft.world.level.levelgen.LegacyRandomSource;
-import net.minecraft.world.level.levelgen.WorldgenRandom;
-import net.minecraft.world.level.levelgen.structure.BoundingBox;
-import net.minecraft.world.level.levelgen.structure.Structure;
-import net.minecraft.world.level.levelgen.structure.StructureStart;
 import net.minecraft.world.level.portal.DimensionTransition;
 import net.minecraft.world.level.storage.LevelResource;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
@@ -63,18 +50,14 @@ import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.neoforged.neoforge.event.entity.living.LivingEntityUseItemEvent;
 import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
-import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
+import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
-import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
 import java.io.IOException;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -93,7 +76,8 @@ public class CataclysmDimensionMod {
         NeoForge.EVENT_BUS.addListener(this::onServerLevelTick);
         NeoForge.EVENT_BUS.addListener(this::onPlayerChangedDimension);
         NeoForge.EVENT_BUS.addListener(this::onServerStarting);
-        NeoForge.EVENT_BUS.addListener(this::onServerAboutToStart);
+        NeoForge.EVENT_BUS.addListener(this::onServerStopped);
+        NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, StructureResetManager::entityJoin);
         // LOWEST:让取消死亡(复活图腾类)的监听器先行,免得 boss 没死也开裂隙
         NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, this::onBossDeath);
         NeoForge.EVENT_BUS.addListener(this::onEntityJoinLevel);
@@ -103,7 +87,7 @@ public class CataclysmDimensionMod {
         CDPlacementTypes.STRUCTURE_PLACEMENT_TYPES.register(bus);
         CDEntities.ENTITY_TYPES.register(bus);
         if (FMLEnvironment.dist.isClient()) {
-            CataclysmDimensionClient.init(bus);
+            CataclysmDimensionClient.init(modContainer, bus);
         }
     }
 
@@ -186,6 +170,21 @@ public class CataclysmDimensionMod {
             return;
         }
 
+        if (entity instanceof ServerPlayer player) {
+            Level origin = entity.level();
+            DimensionPreparation.request(player, targetLevel,
+                    () -> CataclysmDimensionModConfig.ENABLE_TELEPORT_EYE && player.level() == origin
+                            && (CataclysmDimensionModConfig.ALLOW_USE_EYE_IN_DIMENSION || !CataclysmDimensions.LEVELS.contains(origin.dimension()))
+                            && !player.isRemoved() && player.isAlive() && itemStack.is(eyeItem)
+                            && (player.getMainHandItem() == itemStack || player.getOffhandItem() == itemStack)
+                            && !player.getCooldowns().isOnCooldown(eyeItem),
+                    () -> completeEyeTeleport(entity, itemStack, eyeItem, config, targetLevel));
+            return;
+        }
+        completeEyeTeleport(entity, itemStack, eyeItem, config, targetLevel);
+    }
+
+    private void completeEyeTeleport(LivingEntity entity, ItemStack itemStack, Item eyeItem, TeleportConfig config, ServerLevel targetLevel) {
         // 可配置:传送时消耗对应的眼睛物品(创造模式不消耗)
         if (CataclysmDimensionModConfig.CONSUME_TELEPORT_EYE
                 && !(entity instanceof Player creativePlayer && creativePlayer.isCreative())) {
@@ -374,13 +373,15 @@ public class CataclysmDimensionMod {
      * 每 tick 推进结构地形重盖的待处理队列(见下方结构地形重置系统)。
      */
     private void onServerLevelTick(ServerTickEvent.Pre event) {
+        DimensionPreparation.tick();
         processPendingStructureRestores(event.getServer());
+        StructureResetManager.tick();
+        processEmptyDimensions(event.getServer());
     }
 
     /**
      * 玩家进入灾变维度:若该维度此前被占用过(可能被打坏)且当前无其他玩家在场,排入一次结构地形重盖
      * (让这个刚进来的玩家/后续玩家看到完好竞技场);随后把该维度标记为"脏"(本次占用可能又打坏)。
-     * boss 再战交给基础模组的击杀-回刷怪器机制,这里只恢复地形。
      */
     private void onPlayerChangedDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
         if (!CataclysmDimensionModConfig.RESET_STRUCTURE_ON_REENTRY) {
@@ -413,40 +414,67 @@ public class CataclysmDimensionMod {
 
     private void onServerStarting(ServerStartingEvent event) {
         // 静态状态跨存档存活,换档前清掉,免得旧档的重盖任务在新档误触发
+        StructureResetManager.clear();
+        RESOURCE_KEY_BOOLEAN_MAP.clear();
+        RESOURCE_LOCATION_INTEGER_MAP.clear();
         PENDING_RESTORE_POS.clear();
         PENDING_RESTORE_DELAY.clear();
         PURGE_STALE_RIFTS.clear();
         loadDirtyDims(event.getServer());
+        DimensionPreparation.start(event.getServer());
     }
 
-    /**
-     * 调试用:开关开启时,在关卡加载前清空各灾变维度的 region/entities/poi,使其重新按世界生成。
-     * 放启动期做是因为运行期删这些文件会被 C2ME 打开的句柄挡下。
-     */
-    private void onServerAboutToStart(ServerAboutToStartEvent event) {
+    public static final Map<ResourceLocation, Boolean> RESOURCE_KEY_BOOLEAN_MAP = new HashMap<>();
+    public static final Map<ResourceLocation, Integer> RESOURCE_LOCATION_INTEGER_MAP = new HashMap<>();
+    public static final int DELAY = 200;
+
+    private void onServerStopped(ServerStoppedEvent event) {
+        DimensionPreparation.clear();
+        StructureResetManager.clear();
+        PENDING_RESTORE_POS.clear();
+        PENDING_RESTORE_DELAY.clear();
+        RESOURCE_KEY_BOOLEAN_MAP.clear();
+        RESOURCE_LOCATION_INTEGER_MAP.clear();
+        PURGE_STALE_RIFTS.clear();
+    }
+
+    private void processEmptyDimensions(MinecraftServer server) {
         if (!CataclysmDimensionModConfig.RESET_DIMENSION_IF_NO_PLAYER) {
+            for (ResourceLocation location : RESOURCE_KEY_BOOLEAN_MAP.keySet()) {
+                if (!StructureResetManager.isBusy(location) && !PENDING_RESTORE_DELAY.containsKey(location)) {
+                    RESOURCE_KEY_BOOLEAN_MAP.put(location, false);
+                    RESOURCE_LOCATION_INTEGER_MAP.put(location, 0);
+                }
+            }
             return;
         }
-        MinecraftServer server = event.getServer();
-        Path worldRoot = server.getWorldPath(LevelResource.ROOT);
-        LOGGER.info("[Cataclysm Dimension]: map-repair enabled, wiping all cataclysm dimension chunks on startup.");
-        for (ResourceKey<Level> levelKey : CataclysmDimensions.LEVELS) {
-            ResourceLocation loc = levelKey.location();
-            Path dimFolder = DimensionType.getStorageFolder(levelKey, worldRoot);
-            try {
-                deleteFile(dimFolder.resolve("region"), loc);
-                deleteFile(dimFolder.resolve("entities"), loc);
-                deleteFile(dimFolder.resolve("poi"), loc);
-                LOGGER.info("[Cataclysm Dimension]: wiped chunks for {}.", loc);
-            } catch (IOException e) {
-                LOGGER.error("[Cataclysm Dimension]: failed to wipe chunks for {}.", loc, e);
+        for (ResourceKey<Level> dimension : CataclysmDimensions.LEVELS) {
+            ServerLevel level = server.getLevel(dimension);
+            if (level == null) {
+                continue;
             }
-        }
-        // 全量清档后脏维度记录已无意义,一并删掉。
-        try {
-            Files.deleteIfExists(dirtyDimsFile(server));
-        } catch (IOException e) {
-            LOGGER.warn("[Cataclysm Dimension]: failed to delete dirty-dims file after wipe.", e);
+            ResourceLocation location = dimension.location();
+            if (!level.players().isEmpty()) {
+                if (!StructureResetManager.isBusy(location) && !PENDING_RESTORE_DELAY.containsKey(location)) {
+                    RESOURCE_KEY_BOOLEAN_MAP.put(location, false);
+                    RESOURCE_LOCATION_INTEGER_MAP.put(location, 0);
+                }
+                continue;
+            }
+            if (StructureResetManager.isBusy(location)) {
+                continue;
+            }
+            if (!RESOURCE_KEY_BOOLEAN_MAP.getOrDefault(location, false)) {
+                RESOURCE_KEY_BOOLEAN_MAP.put(location, true);
+                RESOURCE_LOCATION_INTEGER_MAP.put(location, DELAY);
+            }
+            int delay = RESOURCE_LOCATION_INTEGER_MAP.getOrDefault(location, 0);
+            if (delay > 0) {
+                RESOURCE_LOCATION_INTEGER_MAP.put(location, delay - 1);
+                if (delay == 1) {
+                    restoreStructure(level, new BlockPos(0, level.getSeaLevel(), 0));
+                }
+            }
         }
     }
 
@@ -522,107 +550,29 @@ public class CataclysmDimensionMod {
         }
     }
 
-    /**
-     * 在 aroundPos 附近找到 boss 结构,把覆盖的每个已加载区块重盖回生成态(地形 + 刷怪器/boss),
-     * 并先清掉竞技场里残留的怪。只改已加载区块,不碰区块 IO。
-     */
     private void restoreStructure(ServerLevel level, BlockPos aroundPos) {
-        // 顺带清掉上一局残留的归返裂隙(已载入的直接清,异步加载中的由 onEntityJoinLevel 拦)。
-        PURGE_STALE_RIFTS.add(level.dimension().location());
-        for (ReturnRiftEntity rift : level.getEntities(CDEntities.RETURN_RIFT.get(), r -> true)) {
-            rift.discard();
-        }
-        StructureManager sm = level.structureManager();
-        ChunkGenerator generator = level.getChunkSource().getGenerator();
-        // 定位该维度的 boss 结构(专属维度里落点附近就是竞技场;取覆盖此位置的所有结构)。
-        Set<Structure> structures = new HashSet<>(sm.getAllStructuresAt(aroundPos).keySet());
-        if (structures.isEmpty()) {
-            // 落点不在结构引用里时,扫描落点周边区块兜底。
-            int cx0 = SectionPos.blockToSectionCoord(aroundPos.getX());
-            int cz0 = SectionPos.blockToSectionCoord(aroundPos.getZ());
-            for (int dx = -4; dx <= 4 && structures.isEmpty(); dx++) {
-                for (int dz = -4; dz <= 4 && structures.isEmpty(); dz++) {
-                    for (StructureStart s : sm.startsForStructure(new ChunkPos(cx0 + dx, cz0 + dz), st -> true)) {
-                        if (s.isValid()) {
-                            structures.add(s.getStructure());
-                        }
-                    }
-                }
-            }
-        }
-        if (structures.isEmpty()) {
-            LOGGER.info("[Cataclysm Dimension]: no boss structure found near {} in {}, skip restore.", aroundPos, level.dimension().location());
+        ResourceLocation dimension = level.dimension().location();
+        if (StructureResetManager.isBusy(dimension)) {
             return;
         }
-        RandomSource random = new WorldgenRandom(new LegacyRandomSource(level.getSeed()));
-        boolean restoredAny = false;
-        for (Structure structure : structures) {
-            StructureStart start = sm.getStructureWithPieceAt(aroundPos, structure);
-            if (start == null || !start.isValid()) {
-                for (StructureStart s : sm.startsForStructure(new ChunkPos(aroundPos), st -> st == structure)) {
-                    if (s.isValid()) {
-                        start = s;
-                        break;
-                    }
-                }
-            }
-            if (start == null || !start.isValid()) {
-                continue;
-            }
-            BoundingBox bb = start.getBoundingBox();
-            // 清掉竞技场范围内残留的怪(逃跑的旧 boss / 小怪 / 掉落物不动),避免重盖后 boss 重复。
-            for (Mob mob : level.getEntitiesOfClass(Mob.class, AABB.of(bb))) {
-                mob.discard();
-            }
-            int minCX = SectionPos.blockToSectionCoord(bb.minX());
-            int maxCX = SectionPos.blockToSectionCoord(bb.maxX());
-            int minCZ = SectionPos.blockToSectionCoord(bb.minZ());
-            int maxCZ = SectionPos.blockToSectionCoord(bb.maxZ());
-            for (int cx = minCX; cx <= maxCX; cx++) {
-                for (int cz = minCZ; cz <= maxCZ; cz++) {
-                    level.getChunk(cx, cz); // 确保该区块已加载(通常玩家进入时已加载;边缘同步补载)
-                    ChunkPos cp = new ChunkPos(cx, cz);
-                    int x0 = cp.getMinBlockX();
-                    int z0 = cp.getMinBlockZ();
-                    BoundingBox chunkBox = new BoundingBox(
-                            Math.max(bb.minX(), x0), bb.minY(), Math.max(bb.minZ(), z0),
-                            Math.min(bb.maxX(), x0 + 15), bb.maxY(), Math.min(bb.maxZ(), z0 + 15));
-                    start.placeInChunk(level, sm, generator, random, chunkBox, cp);
-                }
-            }
-            restoredAny = true;
-            LOGGER.info("[Cataclysm Dimension]: restored structure {} in {}.", start.getStructure(), level.dimension().location());
-        }
-        // 打赢才重置模式:重盖成功即消耗标记,要再打赢才会再重盖;失败则保留、下次重试。
-        if (restoredAny && CataclysmDimensionModConfig.RESET_STRUCTURE_REQUIRES_BOSS_KILL
-                && DIRTY_DIMS.remove(level.dimension().location())) {
-            saveDirtyDims(level.getServer());
-        }
-    }
-
-    private void deleteFile(Path folder, ResourceLocation dimId) throws IOException {
-        if (!Files.exists(folder)) {
-            return;
-        }
-        Files.walkFileTree(folder, new SimpleFileVisitor<>() {
-            @Override
-            public @NotNull FileVisitResult visitFile(@NotNull Path file, @NotNull BasicFileAttributes attrs) {
-                try {
-                    if (Files.deleteIfExists(file)) {
-                        LOGGER.info("[Cataclysm Dimension]: {} cache Deleted -> {}", dimId, file);
-                    }
-                } catch (IOException e) {
-                    // 文件可能仍被区块 IO(如 C2ME)占用而删不掉;跳过即可,留待下次清理。
-                    LOGGER.warn("[Cataclysm Dimension]: {} could not delete {} (in use), skipping.", dimId, file);
-                }
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public @NotNull FileVisitResult visitFileFailed(@NotNull Path file, @NotNull IOException exc) {
-                return FileVisitResult.CONTINUE;
+        boolean started = StructureResetManager.begin(level, aroundPos, success -> {
+            RESOURCE_KEY_BOOLEAN_MAP.put(dimension, success);
+            RESOURCE_LOCATION_INTEGER_MAP.put(dimension, 0);
+            if (success && CataclysmDimensionModConfig.RESET_STRUCTURE_REQUIRES_BOSS_KILL && DIRTY_DIMS.remove(dimension)) {
+                saveDirtyDims(level.getServer());
             }
         });
+        if (started) {
+            RESOURCE_KEY_BOOLEAN_MAP.put(dimension, true);
+            RESOURCE_LOCATION_INTEGER_MAP.put(dimension, 0);
+            PURGE_STALE_RIFTS.add(dimension);
+            for (ReturnRiftEntity rift : level.getEntities(CDEntities.RETURN_RIFT.get(), entity -> true)) {
+                rift.discard();
+            }
+        } else {
+            RESOURCE_KEY_BOOLEAN_MAP.put(dimension, false);
+            RESOURCE_LOCATION_INTEGER_MAP.put(dimension, 0);
+        }
     }
 
     private void onToolTip(ItemTooltipEvent event) {
