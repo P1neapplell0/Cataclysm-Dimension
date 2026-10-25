@@ -41,6 +41,10 @@ public class ReturnRiftEntity extends Entity {
     @Override
     public void tick() {
         super.tick();
+        if (!level().isClientSide && level().players().isEmpty()) {
+            discard();
+            return;
+        }
         if (level().isClientSide) {
             // 环绕的反向传送门粒子,维持存在感
             for (int i = 0; i < 2; i++) {

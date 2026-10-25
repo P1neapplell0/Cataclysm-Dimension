@@ -37,8 +37,8 @@
 | `disable_respawn` | 禁止在竞技场使用床/重生锚 | 重启游戏/服务器并重新进档，无需新建世界；不清除已有重生点，不是禁用 Boss 重生 |
 | `consume_teleport_eye` | 非创造玩家传送时消耗一个眼睛 | 保存后的传送开始时 |
 | `allow_use_eye_in_dimension` | 允许在竞技场里继续使用眼睛 | 本地保存后 |
-| `reset_structure_on_reentry` | 首位玩家再次进入已使用竞技场时回放结构 | 本地保存后；不取消已开始的回放 |
-| `enable_return_rift` | 主 Boss 死亡后生成归返裂隙 | 保存后的击杀；不追溯旧击杀，也不删除已有裂隙 |
+| `reset_structure_on_reentry` | 默认关闭；开启后首位玩家再次进入已使用竞技场时回放结构 | 本地保存后；不取消已开始的回放 |
+| `enable_return_rift` | 默认开启；主 Boss 死亡后生成归返裂隙，维度无人时自动清理 | 保存后的击杀；不追溯旧击杀，关闭不会立即删除已有裂隙；无人清理不依赖此开关 |
 | `reset_structure_requires_boss_kill` | 二次进入重置需要击杀主 Boss 的标记 | 本地保存后；需启用二次进入重置，不改变独立的无人重置选项 |
 | `pregenerate_dimensions` | 进档后后台准备入口区块 | 下次进档/启动服务器；无需新建世界 |
 

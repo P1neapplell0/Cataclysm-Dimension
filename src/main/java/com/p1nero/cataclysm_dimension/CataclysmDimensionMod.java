@@ -339,15 +339,11 @@ public class CataclysmDimensionMod {
         spawnReturnRift(level, event.getEntity().position());
     }
 
-    /**
-     * 旧裂隙可能在 restoreStructure 清扫后才从盘上异步载入;对已重盖的维度,这里把迟到的旧裂隙拦下。
-     * 只拦 loadedFromDisk,不误伤新开的裂隙。
-     */
     private void onEntityJoinLevel(EntityJoinLevelEvent event) {
         if (event.loadedFromDisk()
                 && event.getEntity() instanceof ReturnRiftEntity
                 && event.getLevel() instanceof ServerLevel level
-                && PURGE_STALE_RIFTS.contains(level.dimension().location())) {
+                && (level.players().isEmpty() || PURGE_STALE_RIFTS.contains(level.dimension().location()))) {
             event.setCanceled(true);
         }
     }

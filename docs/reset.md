@@ -15,9 +15,11 @@
 
 - `RESOURCE_KEY_BOOLEAN_MAP`、`RESOURCE_LOCATION_INTEGER_MAP`、`DELAY` 保持公开，键和值类型不变。无人重置仍在开始等待时置布尔值为 true；倒计时从 200 tick 递减到 0，有玩家且无进行中的任务时恢复为 false。
 - `reset_dimension_if_no_player` 开启后，无人时延迟回放原点附近的竞技场，不再在启动或运行期删除整个维度文件。
-- `reset_structure_on_reentry` 保留二次进入触发及 40 tick 延迟；`reset_structure_requires_boss_kill` 保留击杀主 Boss 后才标记、成功恢复才消费标记的行为。
+- `reset_structure_on_reentry` 默认关闭，开启后保留二次进入触发及 40 tick 延迟；`reset_structure_requires_boss_kill` 保留击杀主 Boss 后才标记、成功恢复才消费标记的行为。
 - 1.20.1 保留 `DimensionTeleportInfo`、`TELEPORT_MAP` 以及原有传送器类。
-- 1.20.1 同步归返裂隙的实体注册、眼睛全亮渲染、粒子、主 Boss 判定、出发点保存和归返逻辑；`enable_return_rift` 默认值与 1.21.1 一致，需在配置中开启。
+- 1.20.1 同步归返裂隙的实体注册、眼睛全亮渲染、粒子、主 Boss 判定、出发点保存和归返逻辑；`enable_return_rift` 在两个版本中均默认开启。
+- 归返裂隙在自身的服务端实体 tick 中检查维度玩家列表，无人时自行移除，不在全服 tick 中扫描维度或实体。未进入实体 tick 的裂隙需等恢复 tick 后检查；从磁盘加载时若维度无人或已标记结构重置清理，则拦截旧裂隙。不强制加载区块，不依赖再次进入重置、无人重置或裂隙生成开关，还有玩家时不会因无人检查而清理。
+- 默认值仅用于缺失配置项和界面恢复默认，已有 JSON 中的显式配置值不覆盖。
 
 ## 回归检查
 

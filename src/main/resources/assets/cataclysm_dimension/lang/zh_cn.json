@@ -41,7 +41,7 @@
   "config.cataclysm_dimension.reset_structure_on_reentry": "再次进入时重置结构",
   "config.cataclysm_dimension.reset_structure_on_reentry.tooltip": "首位玩家重进曾使用的竞技场时排队回放结构。已有其他玩家在场时不触发，不打断其战斗。",
   "config.cataclysm_dimension.enable_return_rift": "归返裂隙",
-  "config.cataclysm_dimension.enable_return_rift.tooltip": "主 Boss 死亡后开启可右键返回出发点的裂隙。关闭不会删除已有裂隙；开启不会为过去的击杀补生成裂隙。",
+  "config.cataclysm_dimension.enable_return_rift.tooltip": "主 Boss 死亡后开启可右键返回出发点的裂隙，默认开启。维度内没有玩家时自动清理裂隙，不依赖结构重置开关。关闭不会立即删除已有裂隙；开启不会为过去的击杀补生成裂隙。",
   "config.cataclysm_dimension.reset_structure_requires_boss_kill": "击杀 Boss 后才重置",
   "config.cataclysm_dimension.reset_structure_requires_boss_kill.tooltip": "二次进入重置要求先击杀主 Boss；成功回放后消耗标记。需开启再次进入重置；无人重置是独立设置。",
   "config.cataclysm_dimension.pregenerate_dimensions": "进档后预生成竞技场",
