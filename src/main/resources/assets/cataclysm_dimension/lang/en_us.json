@@ -41,7 +41,7 @@
   "config.cataclysm_dimension.reset_structure_on_reentry": "Reset on re-entry",
   "config.cataclysm_dimension.reset_structure_on_reentry.tooltip": "When the first player returns to a previously used arena, queue a structure replay. Does not interrupt an arena occupied by another player.",
   "config.cataclysm_dimension.enable_return_rift": "Return rifts",
-  "config.cataclysm_dimension.enable_return_rift.tooltip": "After a main boss dies, open a right-clickable rift back to the saved departure point. Does not remove existing rifts when disabled or spawn rifts for past kills.",
+  "config.cataclysm_dimension.enable_return_rift.tooltip": "Enabled by default: after a main boss dies, open a right-clickable rift back to the saved departure point. Rifts are removed when no players remain in the dimension, independently of structure reset settings. Disabling does not immediately remove existing rifts; enabling does not spawn rifts for past kills.",
   "config.cataclysm_dimension.reset_structure_requires_boss_kill": "Require boss kill for reset",
   "config.cataclysm_dimension.reset_structure_requires_boss_kill.tooltip": "Re-entry reset requires a main-boss kill; a successful replay consumes that mark. Requires reset on re-entry. Empty-arena reset is a separate setting.",
   "config.cataclysm_dimension.pregenerate_dimensions": "Prepare arenas on world load",

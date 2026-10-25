@@ -25,8 +25,8 @@ public class CataclysmDimensionModConfig {
     public static volatile boolean DISABLE_RESPAWN = false;
     public static volatile boolean CONSUME_TELEPORT_EYE = false;
     public static volatile boolean ALLOW_USE_EYE_IN_DIMENSION = false;
-    public static volatile boolean RESET_STRUCTURE_ON_REENTRY = true;
-    public static volatile boolean ENABLE_RETURN_RIFT = false;
+    public static volatile boolean RESET_STRUCTURE_ON_REENTRY = false;
+    public static volatile boolean ENABLE_RETURN_RIFT = true;
     public static volatile boolean RESET_STRUCTURE_REQUIRES_BOSS_KILL = false;
     public static volatile boolean PREGENERATE_DIMENSIONS = false;
     public static final String JSON = CataclysmDimensionMod.MOD_ID + ".json";
@@ -41,8 +41,8 @@ public class CataclysmDimensionModConfig {
         RESPAWN("disable_respawn", false, "restart"),
         CONSUME_EYE("consume_teleport_eye", false, "live"),
         EYE_IN_DIMENSION("allow_use_eye_in_dimension", false, "live"),
-        REENTRY_RESET("reset_structure_on_reentry", true, "live"),
-        RETURN_RIFT("enable_return_rift", false, "live"),
+        REENTRY_RESET("reset_structure_on_reentry", false, "live"),
+        RETURN_RIFT("enable_return_rift", true, "live"),
         BOSS_KILL_RESET("reset_structure_requires_boss_kill", false, "live"),
         PREGENERATE("pregenerate_dimensions", false, "next_load");
 
